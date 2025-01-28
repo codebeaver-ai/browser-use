@@ -1,9 +1,10 @@
 import asyncio
 import json
 import logging
+from typing import Optional, Type
 
 from main_content_extractor import MainContentExtractor
-from playwright.async_api import Page
+from pydantic import BaseModel
 
 from browser_use.agent.views import ActionModel, ActionResult
 from browser_use.browser.context import BrowserContext
@@ -14,6 +15,7 @@ from browser_use.controller.views import (
 	ExtractPageContentAction,
 	GoToUrlAction,
 	InputTextAction,
+	NoParamsAction,
 	OpenTabAction,
 	ScrollAction,
 	SearchGoogleAction,
@@ -28,12 +30,27 @@ logger = logging.getLogger(__name__)
 class Controller:
 	def __init__(
 		self,
+		exclude_actions: list[str] = [],
+		output_model: Optional[Type[BaseModel]] = None,
 	):
-		self.registry = Registry()
+		self.exclude_actions = exclude_actions
+		self.output_model = output_model
+		self.registry = Registry(exclude_actions)
 		self._register_default_actions()
 
 	def _register_default_actions(self):
 		"""Register all default browser actions"""
+
+		if self.output_model is not None:
+
+			@self.registry.action('Complete task', param_model=self.output_model)
+			async def done(params: BaseModel):
+				return ActionResult(is_done=True, extracted_content=params.model_dump_json())
+		else:
+
+			@self.registry.action('Complete task', param_model=DoneAction)
+			async def done(params: DoneAction):
+				return ActionResult(is_done=True, extracted_content=params.text)
 
 		# Basic Navigation Actions
 		@self.registry.action(
@@ -49,9 +66,7 @@ class Controller:
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
-		@self.registry.action(
-			'Navigate to URL in the current tab', param_model=GoToUrlAction, requires_browser=True
-		)
+		@self.registry.action('Navigate to URL in the current tab', param_model=GoToUrlAction, requires_browser=True)
 		async def go_to_url(params: GoToUrlAction, browser: BrowserContext):
 			page = await browser.get_current_page()
 			await page.goto(params.url)
@@ -60,27 +75,21 @@ class Controller:
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
-		@self.registry.action('Go back', requires_browser=True)
-		async def go_back(browser: BrowserContext):
-			page = await browser.get_current_page()
-			await page.go_back()
-			await page.wait_for_load_state()
+		@self.registry.action('Go back', param_model=NoParamsAction, requires_browser=True)
+		async def go_back(_: NoParamsAction, browser: BrowserContext):
+			await browser.go_back()
 			msg = '🔙  Navigated back'
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
 		# Element Interaction Actions
-		@self.registry.action(
-			'Click element', param_model=ClickElementAction, requires_browser=True
-		)
+		@self.registry.action('Click element', param_model=ClickElementAction, requires_browser=True)
 		async def click_element(params: ClickElementAction, browser: BrowserContext):
 			session = await browser.get_session()
 			state = session.cached_state
 
 			if params.index not in state.selector_map:
-				raise Exception(
-					f'Element with index {params.index} does not exist - retry or use alternative actions'
-				)
+				raise Exception(f'Element with index {params.index} does not exist - retry or use alternative actions')
 
 			element_node = state.selector_map[params.index]
 			initial_pages = len(session.context.pages)
@@ -106,9 +115,7 @@ class Controller:
 					await browser.switch_to_tab(-1)
 				return ActionResult(extracted_content=msg, include_in_memory=True)
 			except Exception as e:
-				logger.warning(
-					f'Element no longer available with index {params.index} - most likely the page changed'
-				)
+				logger.warning(f'Element not clickable with index {params.index} - most likely the page changed')
 				return ActionResult(error=str(e))
 
 		@self.registry.action(
@@ -121,9 +128,7 @@ class Controller:
 			state = session.cached_state
 
 			if params.index not in state.selector_map:
-				raise Exception(
-					f'Element index {params.index} does not exist - retry or use alternative actions'
-				)
+				raise Exception(f'Element index {params.index} does not exist - retry or use alternative actions')
 
 			element_node = state.selector_map[params.index]
 			await browser._input_text_element_node(element_node, params.text)
@@ -143,9 +148,7 @@ class Controller:
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
-		@self.registry.action(
-			'Open url in new tab', param_model=OpenTabAction, requires_browser=True
-		)
+		@self.registry.action('Open url in new tab', param_model=OpenTabAction, requires_browser=True)
 		async def open_tab(params: OpenTabAction, browser: BrowserContext):
 			await browser.create_new_tab(params.url)
 			msg = f'🔗  Opened new tab with {params.url}'
@@ -168,10 +171,6 @@ class Controller:
 			msg = f'📄  Extracted page as {output_format}\n: {content}\n'
 			logger.info(msg)
 			return ActionResult(extracted_content=msg)
-
-		@self.registry.action('Complete task', param_model=DoneAction)
-		async def done(params: DoneAction):
-			return ActionResult(is_done=True, extracted_content=params.text)
 
 		@self.registry.action(
 			'Scroll down the page by pixel amount - if no amount is specified, scroll down one page',
@@ -351,9 +350,7 @@ class Controller:
 
 			# Validate that we're working with a select element
 			if dom_element.tag_name != 'select':
-				logger.error(
-					f'Element is not a select! Tag: {dom_element.tag_name}, Attributes: {dom_element.attributes}'
-				)
+				logger.error(f'Element is not a select! Tag: {dom_element.tag_name}, Attributes: {dom_element.attributes}')
 				msg = f'Cannot select option: Element with index {index} is a {dom_element.tag_name}, not a select'
 				return ActionResult(extracted_content=msg, include_in_memory=True)
 
@@ -401,9 +398,7 @@ class Controller:
 
 						if dropdown_info:
 							if not dropdown_info.get('found'):
-								logger.error(
-									f'Frame {frame_index} error: {dropdown_info.get("error")}'
-								)
+								logger.error(f'Frame {frame_index} error: {dropdown_info.get("error")}')
 								continue
 
 							logger.debug(f'Found dropdown in frame {frame_index}: {dropdown_info}')
@@ -412,9 +407,7 @@ class Controller:
 							# nth(0) to disable error thrown by strict mode
 							# timeout=1000 because we are already waiting for all network events, therefore ideally we don't need to wait a lot here (default 30s)
 							selected_option_values = (
-								await frame.locator('//' + dom_element.xpath)
-								.nth(0)
-								.select_option(label=text, timeout=1000)
+								await frame.locator('//' + dom_element.xpath).nth(0).select_option(label=text, timeout=1000)
 							)
 
 							msg = f'selected option {text} with value {selected_option_values}'
@@ -447,7 +440,7 @@ class Controller:
 
 	@time_execution_async('--multi-act')
 	async def multi_act(
-		self, actions: list[ActionModel], browser_context: BrowserContext
+		self, actions: list[ActionModel], browser_context: BrowserContext, check_for_new_elements: bool = True
 	) -> list[ActionResult]:
 		"""Execute multiple actions"""
 		results = []
@@ -460,10 +453,8 @@ class Controller:
 		for i, action in enumerate(actions):
 			if action.get_index() is not None and i != 0:
 				new_state = await browser_context.get_state()
-				new_path_hashes = set(
-					e.hash.branch_path_hash for e in new_state.selector_map.values()
-				)
-				if not new_path_hashes.issubset(cached_path_hashes):
+				new_path_hashes = set(e.hash.branch_path_hash for e in new_state.selector_map.values())
+				if check_for_new_elements and not new_path_hashes.issubset(cached_path_hashes):
 					# next action requires index but there are new elements on the page
 					logger.info(f'Something new appeared after action {i} / {len(actions)}')
 					break
@@ -486,9 +477,7 @@ class Controller:
 			for action_name, params in action.model_dump(exclude_unset=True).items():
 				if params is not None:
 					# remove highlights
-					result = await self.registry.execute_action(
-						action_name, params, browser=browser_context
-					)
+					result = await self.registry.execute_action(action_name, params, browser=browser_context)
 					if isinstance(result, str):
 						return ActionResult(extracted_content=result)
 					elif isinstance(result, ActionResult):
