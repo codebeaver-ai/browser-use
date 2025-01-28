@@ -31,7 +31,7 @@ jobs:
                     "${{ github.event.check_run.conclusion }}",
                     "${{ github.event.check_run.output.summary || '' }}"
                   ]],
-                   "minCol": 2
+                   "minCol": 1
                 }
               }
             ]
