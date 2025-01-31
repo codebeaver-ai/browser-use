@@ -5,6 +5,7 @@ from browser_use.agent.message_manager.views import MessageHistory, MessageMetad
 from browser_use.agent.views import ActionResult, AgentHistory, AgentHistoryList, AgentOutput
 from browser_use.browser.views import BrowserStateHistory
 from browser_use.controller.registry.views import ActionRegistry, RegisteredAction
+from browser_use.controller.views import NoParamsAction
 from browser_use.dom.history_tree_processor.service import DOMHistoryElement
 from langchain_core.messages import HumanMessage
 from pathlib import Path
@@ -90,3 +91,33 @@ class TestActionRegistry:
         assert "param2" in prompt_description
         assert "string" in prompt_description.lower()
         assert "integer" in prompt_description.lower()
+
+class TestNoParamsAction:
+    """Tests for the NoParamsAction model."""
+
+    def test_no_params_action_ignores_all_inputs(self):
+        """
+        Test that NoParamsAction ignores all inputs and always results in an empty model.
+        This test covers the model_validator and the extra configuration.
+        """
+        # Test with various types of input
+        inputs = [
+            {},
+            {"some_field": "value"},
+            {"a": 1, "b": 2, "c": 3},
+            {"complex": {"nested": "structure"}},
+        ]
+
+        for input_data in inputs:
+            action = NoParamsAction(**input_data)
+
+            # Check that the resulting model is always empty
+            assert action.model_dump() == {}
+
+            # Check that no attributes were added to the model
+            assert not hasattr(action, "some_field")
+            assert not hasattr(action, "a")
+            assert not hasattr(action, "complex")
+
+        # Test that extra fields are allowed without raising an error
+        NoParamsAction(extra_field="This should not raise an error")
