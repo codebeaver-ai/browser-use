@@ -7,6 +7,7 @@ from browser_use.browser.views import BrowserStateHistory
 from browser_use.controller.registry.views import ActionRegistry, RegisteredAction
 from browser_use.controller.views import NoParamsAction
 from browser_use.dom.history_tree_processor.service import DOMHistoryElement
+from browser_use.dom.views import DOMElementNode, DOMTextNode
 from langchain_core.messages import HumanMessage
 from pathlib import Path
 from pydantic import BaseModel
@@ -121,3 +122,63 @@ class TestNoParamsAction:
 
         # Test that extra fields are allowed without raising an error
         NoParamsAction(extra_field="This should not raise an error")
+
+class TestDOMElementNode:
+    def test_get_file_upload_element(self):
+        """
+        Test the get_file_upload_element method of DOMElementNode.
+        This test covers:
+        1. Finding a file input element within a nested structure.
+        2. Returning None when no file input element is present.
+        """
+        # Create a mock DOM structure with a file input
+        file_input = DOMElementNode(
+            is_visible=True,
+            parent=None,
+            tag_name='input',
+            xpath='/html/body/div/input',
+            attributes={'type': 'file'},
+            children=[]
+        )
+        div = DOMElementNode(
+            is_visible=True,
+            parent=None,
+            tag_name='div',
+            xpath='/html/body/div',
+            attributes={},
+            children=[file_input]
+        )
+        body = DOMElementNode(
+            is_visible=True,
+            parent=None,
+            tag_name='body',
+            xpath='/html/body',
+            attributes={},
+            children=[div]
+        )
+
+        # Test finding the file input element
+        result = body.get_file_upload_element()
+        assert result == file_input
+
+        # Test with no file input element
+        div_without_file_input = DOMElementNode(
+            is_visible=True,
+            parent=None,
+            tag_name='div',
+            xpath='/html/body/div',
+            attributes={},
+            children=[DOMTextNode(is_visible=True, parent=None, text="Some text")]
+        )
+        body_without_file_input = DOMElementNode(
+            is_visible=True,
+            parent=None,
+            tag_name='body',
+            xpath='/html/body',
+            attributes={},
+            children=[div_without_file_input]
+        )
+
+        # Test not finding a file input element
+        result = body_without_file_input.get_file_upload_element()
+        assert result is None
