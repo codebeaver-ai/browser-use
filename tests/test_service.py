@@ -11,6 +11,8 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode, DOMTextNode
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -215,3 +217,78 @@ class TestRegistry:
         # Verify that the action functions were called with correct parameters
         registry.registry.actions['test_action_with_browser'].function.assert_called_once_with(param1='test_value', browser=mock_browser)
         registry.registry.actions['test_action_without_browser'].function.assert_called_once_with(param1='test_value')
+
+class TestDomService:
+    def test_create_selector_map(self):
+        """
+        Test that the _create_selector_map method correctly creates a mapping
+        of highlight indices to DOM elements.
+
+        This test ensures that:
+        1. The method processes the DOM tree correctly.
+        2. Only elements with highlight indices are included in the map.
+        3. The resulting map contains the correct mappings.
+        """
+        # Create a mock Page object
+        mock_page = Mock()
+
+        # Initialize DomService
+        dom_service = DomService(mock_page)
+
+        # Create a sample DOM tree
+        root = DOMElementNode(
+            tag_name="div",
+            xpath="/html/body/div",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=True,
+            highlight_index=0,
+            shadow_root=False,
+            parent=None
+        )
+
+        child1 = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p[1]",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=False,
+            highlight_index=1,
+            shadow_root=False,
+            parent=root
+        )
+
+        child2 = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p[2]",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=False,
+            highlight_index=None,
+            shadow_root=False,
+            parent=root
+        )
+
+        text_node = DOMTextNode(
+            text="Sample text",
+            is_visible=True,
+            parent=child2
+        )
+
+        root.children = [child1, child2]
+        child2.children = [text_node]
+
+        # Call _create_selector_map
+        selector_map = dom_service._create_selector_map(root)
+
+        # Assert the results
+        assert len(selector_map) == 2
+        assert selector_map[0] == root
+        assert selector_map[1] == child1
+        assert 2 not in selector_map  # child2 should not be in the map as it has no highlight_index
