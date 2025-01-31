@@ -5,9 +5,10 @@ from browser_use.agent.message_manager.views import MessageHistory, MessageMetad
 from browser_use.agent.views import AgentHistoryList, AgentOutput
 from browser_use.browser.views import BrowserStateHistory, TabInfo
 from browser_use.controller.registry.views import ActionRegistry, RegisteredAction
+from browser_use.controller.views import ScrollAction
 from langchain_core.messages import HumanMessage
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from typing import Callable
 from unittest.mock import Mock
 
@@ -139,3 +140,24 @@ class TestActionRegistry:
             "Second action: \n{action2: {'param1': {'type': 'string'}, 'param2': {'type': 'integer'}}}"
         )
         assert prompt_description == expected_description
+
+class TestScrollAction:
+    def test_scroll_action_validation(self):
+        """
+        Test that ScrollAction correctly validates the 'amount' field.
+        This test covers:
+        1. Creation of ScrollAction with valid integer amount
+        2. Creation of ScrollAction with no amount (should default to None)
+        3. Rejection of ScrollAction with invalid (non-integer) amount
+        """
+        # Test with valid integer amount
+        valid_action = ScrollAction(amount=100)
+        assert valid_action.amount == 100
+
+        # Test with no amount (should default to None)
+        default_action = ScrollAction()
+        assert default_action.amount is None
+
+        # Test with invalid (non-integer) amount
+        with pytest.raises(ValidationError):
+            ScrollAction(amount="invalid")
