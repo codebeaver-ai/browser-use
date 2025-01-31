@@ -1,9 +1,9 @@
 import os
 import pytest
 import sys
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from browser_use.agent.message_manager.service import MessageManager
+from browser_use.agent.prompts import SystemPrompt
 from browser_use.agent.service import Agent
 from browser_use.agent.views import ActionResult, AgentOutput
 from browser_use.browser.browser import Browser
@@ -12,13 +12,14 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import SystemMessage, HumanMessage
-from pydantic import BaseModel
-from browser_use.agent.prompts import SystemPrompt
 from browser_use.dom.history_tree_processor.service import HistoryTreeProcessor
-from browser_use.dom.views import DOMElementNode
 from browser_use.dom.history_tree_processor.view import DOMHistoryElement
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode, DOMTextNode
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 # run with python -m pytest tests/test_service.py
 
@@ -166,7 +167,7 @@ class TestHistoryTreeProcessor:
         """
         Test that the convert_dom_element_to_history_element method correctly
         converts a DOMElementNode to a DOMHistoryElement.
-        
+
         This test ensures that:
         1. The method returns a DOMHistoryElement instance.
         2. The returned object has the correct attributes from the input DOMElementNode.
@@ -199,3 +200,84 @@ class TestHistoryTreeProcessor:
         assert isinstance(result, DOMHistoryElement)
         assert result.tag_name == "p"
         assert result.xpath == "/html/body/div/p"
+
+class TestDomService:
+    @pytest.fixture
+    def sample_dom_tree(self):
+        """
+        Create a sample DOM tree for testing.
+        """
+        root = DOMElementNode(
+            tag_name="html",
+            xpath="/html",
+            highlight_index=0,
+            is_visible=True,
+            parent=None,
+            attributes={},
+            children=[]
+        )
+        body = DOMElementNode(
+            tag_name="body",
+            xpath="/html/body",
+            highlight_index=1,
+            is_visible=True,
+            parent=root,
+            attributes={},
+            children=[]
+        )
+        div = DOMElementNode(
+            tag_name="div",
+            xpath="/html/body/div",
+            highlight_index=2,
+            is_visible=True,
+            parent=body,
+            attributes={},
+            children=[]
+        )
+        p = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p",
+            highlight_index=3,
+            is_visible=True,
+            parent=div,
+            attributes={},
+            children=[]
+        )
+        text = DOMTextNode(
+            text="Hello, world!",
+            is_visible=True,
+            parent=p
+        )
+
+        root.children = [body]
+        body.children = [div]
+        div.children = [p]
+        p.children = [text]
+
+        return root
+
+    def test_create_selector_map(self, sample_dom_tree):
+        """
+        Test that the _create_selector_map method correctly creates a selector map
+        from a given DOM tree.
+
+        This test ensures that:
+        1. The method returns a dictionary (SelectorMap).
+        2. The dictionary keys correspond to the highlight indices.
+        3. The dictionary values are the correct DOMElementNode instances.
+        4. Text nodes are not included in the selector map.
+        """
+        dom_service = DomService(page=None)  # We don't need a real page for this test
+
+        selector_map = dom_service._create_selector_map(sample_dom_tree)
+
+        assert isinstance(selector_map, dict)
+        assert len(selector_map) == 4  # 4 elements with highlight indices
+
+        assert 0 in selector_map and selector_map[0].tag_name == "html"
+        assert 1 in selector_map and selector_map[1].tag_name == "body"
+        assert 2 in selector_map and selector_map[2].tag_name == "div"
+        assert 3 in selector_map and selector_map[3].tag_name == "p"
+
+        # Ensure text node is not in the selector map
+        assert 4 not in selector_map
