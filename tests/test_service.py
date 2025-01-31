@@ -12,6 +12,8 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode, DOMState
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
@@ -225,3 +227,66 @@ class TestAgentToolCalling:
             result = agent.set_tool_calling_method("auto")
 
             assert result == expected_method, f"Expected {expected_method} for {chat_model_library}, but got {result}"
+
+class TestDomService:
+    @pytest.mark.asyncio
+    async def test_get_clickable_elements(self):
+        """
+        Test the get_clickable_elements method of DomService.
+
+        This test ensures that:
+        1. The method calls the necessary JavaScript evaluation.
+        2. It processes the returned data correctly.
+        3. It returns a valid DOMState object.
+        """
+        # Mock the Page object
+        mock_page = AsyncMock()
+
+        # Mock the resources.read_text function
+        with patch('browser_use.dom.service.resources.read_text') as mock_read_text:
+            mock_read_text.return_value = "mock_js_code"
+
+            # Create a DomService instance
+            dom_service = DomService(mock_page)
+
+            # Mock the page.evaluate method to return a sample DOM structure
+            mock_page.evaluate.return_value = {
+                "tagName": "HTML",
+                "xpath": "/html",
+                "children": [
+                    {
+                        "tagName": "BODY",
+                        "xpath": "/html/body",
+                        "children": [],
+                        "isVisible": True,
+                        "isInteractive": False,
+                        "highlightIndex": 0
+                    }
+                ],
+                "isVisible": True,
+                "isInteractive": False
+            }
+
+            # Call the method
+            result = await dom_service.get_clickable_elements()
+
+            # Assert that the method called page.evaluate with the correct arguments
+            mock_page.evaluate.assert_called_once_with("mock_js_code", {
+                'doHighlightElements': True,
+                'focusHighlightIndex': -1,
+                'viewportExpansion': 0,
+            })
+
+            # Assert that the result is a DOMState object
+            assert isinstance(result, DOMState)
+
+            # Assert that the element_tree is correctly structured
+            assert isinstance(result.element_tree, DOMElementNode)
+            assert result.element_tree.tag_name == "HTML"
+            assert len(result.element_tree.children) == 1
+            assert result.element_tree.children[0].tag_name == "BODY"
+
+            # Assert that the selector_map is correctly populated
+            assert len(result.selector_map) == 1
+            assert 0 in result.selector_map
+            assert result.selector_map[0].tag_name == "BODY"
