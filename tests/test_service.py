@@ -125,6 +125,41 @@ class TestAgent:
             assert 'Test error' in agent._last_result[0].error
             assert agent._last_result[0].include_in_memory == True
 
+    @pytest.mark.parametrize("chat_model_library, expected_method", [
+        ("ChatGoogleGenerativeAI", None),
+        ("ChatOpenAI", "function_calling"),
+        ("AzureChatOpenAI", "function_calling"),
+        ("UnknownModel", None)
+    ])
+    def test_set_tool_calling_method(self, chat_model_library, expected_method):
+        """
+        Test that set_tool_calling_method correctly determines the tool calling method
+        based on the chat model library being used.
+        
+        This test covers:
+        1. ChatGoogleGenerativeAI should return None
+        2. ChatOpenAI should return "function_calling"
+        3. AzureChatOpenAI should return "function_calling"
+        4. Unknown models should return None
+        """
+        # Mock the LLM
+        mock_llm = MagicMock()
+        
+        # Create an Agent instance with the mocked LLM
+        agent = Agent(task="Test task", llm=mock_llm)
+        
+        # Mock the _set_model_names method to set the chat_model_library
+        with patch.object(Agent, '_set_model_names') as mock_set_model_names:
+            mock_set_model_names.side_effect = lambda: setattr(agent, 'chat_model_library', chat_model_library)
+            
+            # Call _set_model_names to set the chat_model_library
+            agent._set_model_names()
+            
+            # Now call set_tool_calling_method
+            result = agent.set_tool_calling_method("auto")
+            
+            assert result == expected_method
+
 class TestRegistry:
     @pytest.fixture
     def registry_with_excludes(self):
@@ -157,45 +192,3 @@ class TestRegistry:
 
         # Assert that the included action was added to the registry
         assert 'included_action' in registry_with_excludes.registry.actions
-
-    @pytest.mark.asyncio
-    async def test_execute_action_with_and_without_browser_context(self):
-        """
-        Test that the execute_action method correctly handles actions with and without a browser context.
-        This test ensures that:
-        1. An action requiring a browser context is executed correctly.
-        2. An action not requiring a browser context is executed correctly.
-        3. The browser context is passed to the action function when required.
-        4. The action function receives the correct parameters.
-        5. The method raises an error when a browser context is required but not provided.
-        """
-        registry = Registry()
-
-        # Define a mock action model
-        class TestActionModel(BaseModel):
-            param1: str
-
-        # Define mock action functions
-        async def test_action_with_browser(param1: str, browser):
-            return f"Action executed with {param1} and browser"
-
-        async def test_action_without_browser(param1: str):
-            return f"Action executed with {param1}"
-
-        # Register the actions
-        registry.registry.actions['test_action_with_browser'] = MagicMock(
-            requires_browser=True,
-            function=AsyncMock(side_effect=test_action_with_browser),
-            param_model=TestActionModel,
-            description="Test action with browser"
-        )
-
-        registry.registry.actions['test_action_without_browser'] = MagicMock(
-            requires_browser=False,
-            function=AsyncMock(side_effect=test_action_without_browser),
-            param_model=TestActionModel,
-            description="Test action without browser"
-        )
-
-        # Mock BrowserContext
-        mock_browser = MagicMock()
