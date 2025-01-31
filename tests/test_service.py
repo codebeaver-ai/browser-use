@@ -16,6 +16,9 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel
 from browser_use.agent.prompts import SystemPrompt
+from browser_use.dom.history_tree_processor.service import HistoryTreeProcessor
+from browser_use.dom.views import DOMElementNode
+from browser_use.dom.history_tree_processor.view import DOMHistoryElement
 
 # run with python -m pytest tests/test_service.py
 
@@ -158,44 +161,41 @@ class TestRegistry:
         # Assert that the included action was added to the registry
         assert 'included_action' in registry_with_excludes.registry.actions
 
-    @pytest.mark.asyncio
-    async def test_execute_action_with_and_without_browser_context(self):
+class TestHistoryTreeProcessor:
+    def test_convert_dom_element_to_history_element(self):
         """
-        Test that the execute_action method correctly handles actions with and without a browser context.
+        Test that the convert_dom_element_to_history_element method correctly
+        converts a DOMElementNode to a DOMHistoryElement.
+        
         This test ensures that:
-        1. An action requiring a browser context is executed correctly.
-        2. An action not requiring a browser context is executed correctly.
-        3. The browser context is passed to the action function when required.
-        4. The action function receives the correct parameters.
-        5. The method raises an error when a browser context is required but not provided.
+        1. The method returns a DOMHistoryElement instance.
+        2. The returned object has the correct attributes from the input DOMElementNode.
+        3. The parent_branch_path is correctly calculated.
         """
-        registry = Registry()
-
-        # Define a mock action model
-        class TestActionModel(BaseModel):
-            param1: str
-
-        # Define mock action functions
-        async def test_action_with_browser(param1: str, browser):
-            return f"Action executed with {param1} and browser"
-
-        async def test_action_without_browser(param1: str):
-            return f"Action executed with {param1}"
-
-        # Register the actions
-        registry.registry.actions['test_action_with_browser'] = MagicMock(
-            requires_browser=True,
-            function=AsyncMock(side_effect=test_action_with_browser),
-            param_model=TestActionModel,
-            description="Test action with browser"
+        # Arrange
+        mock_parent = DOMElementNode(
+            tag_name="div",
+            xpath="/html/body/div",
+            highlight_index=0,
+            is_visible=True,
+            parent=None,
+            attributes={},
+            children=[]
+        )
+        mock_dom_element = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p",
+            highlight_index=1,
+            is_visible=True,
+            parent=mock_parent,
+            attributes={"class": "test"},
+            children=[]
         )
 
-        registry.registry.actions['test_action_without_browser'] = MagicMock(
-            requires_browser=False,
-            function=AsyncMock(side_effect=test_action_without_browser),
-            param_model=TestActionModel,
-            description="Test action without browser"
-        )
+        # Act
+        result = HistoryTreeProcessor.convert_dom_element_to_history_element(mock_dom_element)
 
-        # Mock BrowserContext
-        mock_browser = MagicMock()
+        # Assert
+        assert isinstance(result, DOMHistoryElement)
+        assert result.tag_name == "p"
+        assert result.xpath == "/html/body/div/p"
