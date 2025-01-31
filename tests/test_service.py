@@ -6,7 +6,7 @@ from datetime import datetime
 from browser_use.agent.message_manager.service import MessageManager
 from browser_use.agent.prompts import SystemPrompt
 from browser_use.agent.service import Agent
-from browser_use.agent.views import ActionResult, AgentOutput
+from browser_use.agent.views import ActionResult, AgentOutput, ActionModel
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
@@ -173,17 +173,17 @@ class TestRegistry:
         registry.registry.actions['test_action_with_browser'].function.assert_called_once_with(param1='test_value', browser=mock_browser)
         registry.registry.actions['test_action_without_browser'].function.assert_called_once_with(param1='test_value')
 
-class TestMessageManager:
-    def test_cut_messages(self):
+class TestController:
+    @pytest.mark.asyncio
+    async def test_multi_act_with_new_elements(self):
         """
-        Test that the cut_messages method correctly trims messages when the total token count exceeds the maximum allowed.
+        Test that multi_act method handles the appearance of new elements correctly.
         
         This test ensures that:
-        1. Messages are trimmed when the total token count exceeds the maximum.
-        2. The last message is trimmed proportionally to the number of tokens needed.
-        3. The total token count is updated correctly after trimming.
+        1. The method executes multiple actions.
+        2. It checks for new elements after each action.
+        3. It stops execution when new elements are detected.
+        4. It returns the correct number of results.
         """
-        # Create a mock LLM
-        mock_llm = MagicMock()
-        
-        # Create a mock SystemPrompt class
+        # Create a real Controller instance
+        controller = Controller()
