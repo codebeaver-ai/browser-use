@@ -8,6 +8,7 @@ from browser_use.controller.registry.views import ActionRegistry, RegisteredActi
 from browser_use.controller.views import NoParamsAction
 from browser_use.dom.history_tree_processor.service import DOMHistoryElement
 from browser_use.dom.views import DOMElementNode, DOMTextNode
+from browser_use.telemetry.views import AgentRunTelemetryEvent, BaseTelemetryEvent
 from langchain_core.messages import HumanMessage
 from pathlib import Path
 from pydantic import BaseModel
@@ -182,3 +183,40 @@ class TestDOMElementNode:
         # Test not finding a file input element
         result = body_without_file_input.get_file_upload_element()
         assert result is None
+
+class TestTelemetryEvents:
+    def test_base_telemetry_event_properties(self):
+        """
+        Test that BaseTelemetryEvent's properties method correctly excludes 'name'
+        and that subclasses implement the name property correctly.
+        """
+        # Create an instance of AgentRunTelemetryEvent
+        event = AgentRunTelemetryEvent(
+            agent_id="test_agent",
+            use_vision=True,
+            task="test_task",
+            model_name="test_model",
+            chat_model_library="test_library",
+            version="1.0",
+            source="test_source"
+        )
+
+        # Check that the name property is correctly implemented
+        assert event.name == "agent_run"
+
+        # Check that the properties method returns a dictionary without 'name'
+        properties = event.properties
+        assert "name" not in properties
+        assert properties == {
+            "agent_id": "test_agent",
+            "use_vision": True,
+            "task": "test_task",
+            "model_name": "test_model",
+            "chat_model_library": "test_library",
+            "version": "1.0",
+            "source": "test_source"
+        }
+
+        # Test that we can't instantiate BaseTelemetryEvent directly
+        with pytest.raises(TypeError):
+            BaseTelemetryEvent()
