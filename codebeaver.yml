@@ -1,0 +1,2 @@
+env: ['OPENAI_API_KEY=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"']
+from: pytest
