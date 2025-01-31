@@ -4,8 +4,11 @@ import tempfile
 from browser_use.agent.message_manager.views import MessageHistory, MessageMetadata
 from browser_use.agent.views import AgentHistoryList, AgentOutput
 from browser_use.browser.views import BrowserStateHistory, TabInfo
+from browser_use.controller.registry.views import ActionRegistry, RegisteredAction
 from langchain_core.messages import HumanMessage
 from pathlib import Path
+from pydantic import BaseModel
+from typing import Callable
 from unittest.mock import Mock
 
 class TestMessageHistory:
@@ -93,3 +96,46 @@ class TestBrowserStateHistory:
 
         # Verify that the to_dict method of the mock element was called
         mock_element.to_dict.assert_called_once()
+
+class TestActionRegistry:
+    def test_get_prompt_description(self):
+        """
+        Test that the get_prompt_description method of ActionRegistry
+        correctly concatenates the prompt descriptions of all registered actions.
+        """
+        # Create a dummy parameter model
+        class DummyParams(BaseModel):
+            param1: str
+            param2: int
+
+        # Create dummy function
+        def dummy_func():
+            pass
+
+        # Create ActionRegistry instance
+        registry = ActionRegistry()
+
+        # Add two actions
+        action1 = RegisteredAction(
+            name="action1",
+            description="First action",
+            function=dummy_func,
+            param_model=DummyParams
+        )
+        action2 = RegisteredAction(
+            name="action2",
+            description="Second action",
+            function=dummy_func,
+            param_model=DummyParams
+        )
+        registry.actions = {"action1": action1, "action2": action2}
+
+        # Get prompt description
+        prompt_description = registry.get_prompt_description()
+
+        # Assert the result
+        expected_description = (
+            "First action: \n{action1: {'param1': {'type': 'string'}, 'param2': {'type': 'integer'}}}\n"
+            "Second action: \n{action2: {'param1': {'type': 'string'}, 'param2': {'type': 'integer'}}}"
+        )
+        assert prompt_description == expected_description
