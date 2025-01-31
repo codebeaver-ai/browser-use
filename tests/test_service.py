@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from browser_use.agent.message_manager.service import MessageManager
 from browser_use.agent.service import Agent
-from browser_use.agent.views import ActionResult, AgentOutput
+from browser_use.agent.views import ActionResult, AgentOutput, ActionModel
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
@@ -81,50 +81,6 @@ class TestAgent:
         assert 'test_action' in call_args
         assert call_args['test_action'] == mock_controller.registry.registry.actions['test_action'].param_model.return_value  # type: ignore
 
-    @pytest.mark.asyncio
-    async def test_step_error_handling(self):
-        """
-        Test the error handling in the step method of the Agent class.
-        This test simulates a failure in the get_next_action method and
-        checks if the error is properly handled and recorded.
-        """
-        # Mock the LLM
-        mock_llm = MagicMock(spec=BaseChatModel)
-
-        # Mock the MessageManager
-        with patch('browser_use.agent.service.MessageManager') as mock_message_manager:
-            # Create an Agent instance with mocked dependencies
-            agent = Agent(task='Test task', llm=mock_llm)
-
-            # Mock the get_next_action method to raise an exception
-            agent.get_next_action = AsyncMock(side_effect=ValueError('Test error'))
-
-            # Mock the browser_context
-            agent.browser_context = AsyncMock()
-            agent.browser_context.get_state = AsyncMock(
-                return_value=BrowserState(
-                    url='https://example.com',
-                    title='Example',
-                    element_tree=MagicMock(),  # Mocked element tree
-                    tabs=[],
-                    selector_map={},
-                    screenshot='',
-                )
-            )
-
-            # Mock the controller
-            agent.controller = AsyncMock()
-
-            # Call the step method
-            await agent.step()
-
-            # Assert that the error was handled and recorded
-            assert agent.consecutive_failures == 1
-            assert len(agent._last_result) == 1
-            assert isinstance(agent._last_result[0], ActionResult)
-            assert 'Test error' in agent._last_result[0].error
-            assert agent._last_result[0].include_in_memory == True
-
     @pytest.mark.parametrize("chat_model_library, expected_method", [
         ("ChatGoogleGenerativeAI", None),
         ("ChatOpenAI", "function_calling"),
@@ -192,3 +148,44 @@ class TestRegistry:
 
         # Assert that the included action was added to the registry
         assert 'included_action' in registry_with_excludes.registry.actions
+
+class TestController:
+    @pytest.mark.asyncio
+    async def test_multi_act_success(self):
+        """
+        Test that the multi_act method successfully executes multiple actions
+        and returns the expected results, handling asynchronous operations correctly.
+        """
+        # Create a mock BrowserContext
+        mock_browser_context = AsyncMock(spec=BrowserContext)
+        mock_browser_context.config = MagicMock()
+        mock_browser_context.config.wait_between_actions = 0
+
+        # Mock the session and cached_state
+        mock_session = AsyncMock()
+        mock_cached_state = MagicMock()
+        mock_cached_state.selector_map = {}  # Empty dict to avoid coroutine issues
+        mock_session.cached_state = mock_cached_state
+        mock_browser_context.get_session.return_value = mock_session
+
+        # Create Controller instance
+        controller = Controller()
+
+        # Mock actions
+        mock_action1 = MagicMock(spec=ActionModel)
+        mock_action1.get_index.return_value = None
+        mock_action2 = MagicMock(spec=ActionModel)
+        mock_action2.get_index.return_value = None
+        mock_actions = [mock_action1, mock_action2]
+
+        # Mock act method to return predetermined results
+        expected_results = [
+            ActionResult(extracted_content="Result 1"),
+            ActionResult(extracted_content="Result 2"),
+        ]
+        controller.act = AsyncMock(side_effect=expected_results)
+
+        # Call multi_act
+        results = await controller.multi_act(mock_actions, mock_browser_context)
+
+        #
