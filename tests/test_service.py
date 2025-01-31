@@ -13,7 +13,7 @@ from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -198,3 +198,30 @@ class TestRegistry:
         )
 
         #
+
+class TestAgentToolCalling:
+    @pytest.mark.parametrize("chat_model_library, expected_method", [
+        ("ChatGoogleGenerativeAI", None),
+        ("ChatOpenAI", "function_calling"),
+        ("AzureChatOpenAI", "function_calling"),
+        ("UnknownChatModel", None)
+    ])
+    def test_set_tool_calling_method(self, chat_model_library, expected_method):
+        """
+        Test that set_tool_calling_method correctly determines the tool calling method
+        based on the chat model library being used.
+
+        This test covers:
+        1. ChatGoogleGenerativeAI should return None
+        2. ChatOpenAI should return "function_calling"
+        3. AzureChatOpenAI should return "function_calling"
+        4. Unknown chat models should return None
+        """
+        with patch('browser_use.agent.service.BaseChatModel') as mock_base_chat_model:
+            mock_llm = mock_base_chat_model.return_value
+            mock_llm.__class__.__name__ = chat_model_library
+
+            agent = Agent(task="Test task", llm=mock_llm)
+            result = agent.set_tool_calling_method("auto")
+
+            assert result == expected_method, f"Expected {expected_method} for {chat_model_library}, but got {result}"
