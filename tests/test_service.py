@@ -11,6 +11,8 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DomService
+from browser_use.dom.views import CoordinateSet, DOMElementNode, DOMTextNode, ViewportInfo
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -215,3 +217,78 @@ class TestRegistry:
         # Verify that the action functions were called with correct parameters
         registry.registry.actions['test_action_with_browser'].function.assert_called_once_with(param1='test_value', browser=mock_browser)
         registry.registry.actions['test_action_without_browser'].function.assert_called_once_with(param1='test_value')
+
+class TestDomService:
+    @pytest.mark.asyncio
+    async def test_parse_node(self):
+        """
+        Test the _parse_node method of DomService to ensure it correctly parses
+        both text nodes and element nodes with various attributes.
+        """
+        # Create a mock Page object
+        mock_page = MagicMock()
+        dom_service = DomService(mock_page)
+
+        # Test parsing a text node
+        text_node_data = {
+            'type': 'TEXT_NODE',
+            'text': 'Sample text',
+            'isVisible': True
+        }
+        parsed_text_node = dom_service._parse_node(text_node_data)
+        assert isinstance(parsed_text_node, DOMTextNode)
+        assert parsed_text_node.text == 'Sample text'
+        assert parsed_text_node.is_visible == True
+
+        # Test parsing an element node with various attributes
+        element_node_data = {
+            'type': 'ELEMENT_NODE',
+            'tagName': 'DIV',
+            'xpath': '//div[1]',
+            'attributes': {'id': 'test-div', 'class': 'container'},
+            'isVisible': True,
+            'isInteractive': True,
+            'isTopElement': False,
+            'highlightIndex': 1,
+            'shadowRoot': False,
+            'viewportCoordinates': {
+                'topLeft': {'x': 0, 'y': 0},
+                'topRight': {'x': 100, 'y': 0},
+                'bottomLeft': {'x': 0, 'y': 100},
+                'bottomRight': {'x': 100, 'y': 100},
+                'center': {'x': 50, 'y': 50},
+                'width': 100,
+                'height': 100
+            },
+            'pageCoordinates': {
+                'topLeft': {'x': 0, 'y': 0},
+                'topRight': {'x': 100, 'y': 0},
+                'bottomLeft': {'x': 0, 'y': 100},
+                'bottomRight': {'x': 100, 'y': 100},
+                'center': {'x': 50, 'y': 50},
+                'width': 100,
+                'height': 100
+            },
+            'viewport': {
+                'scrollX': 0,
+                'scrollY': 0,
+                'width': 1024,
+                'height': 768
+            },
+            'children': []
+        }
+        parsed_element_node = dom_service._parse_node(element_node_data)
+        assert isinstance(parsed_element_node, DOMElementNode)
+        assert parsed_element_node.tag_name == 'DIV'
+        assert parsed_element_node.xpath == '//div[1]'
+        assert parsed_element_node.attributes == {'id': 'test-div', 'class': 'container'}
+        assert parsed_element_node.is_visible == True
+        assert parsed_element_node.is_interactive == True
+        assert parsed_element_node.is_top_element == False
+        assert parsed_element_node.highlight_index == 1
+        assert parsed_element_node.shadow_root == False
+        assert isinstance(parsed_element_node.viewport_coordinates, CoordinateSet)
+        assert isinstance(parsed_element_node.page_coordinates, CoordinateSet)
+        assert isinstance(parsed_element_node.viewport_info, ViewportInfo)
+        assert parsed_element_node.viewport_info.width == 1024
+        assert parsed_element_node.viewport_info.height == 768
