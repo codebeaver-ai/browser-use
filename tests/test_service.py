@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from browser_use.agent.message_manager.service import MessageManager
 from browser_use.agent.service import Agent
@@ -12,11 +11,14 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
-from langchain_core.language_models.chat_models import BaseChatModel
-from pydantic import BaseModel
 from browser_use.dom.history_tree_processor.service import HistoryTreeProcessor
-from browser_use.dom.views import DOMElementNode
 from browser_use.dom.history_tree_processor.view import DOMHistoryElement
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode
+from langchain_core.language_models.chat_models import BaseChatModel
+from playwright.async_api import Page
+from pydantic import BaseModel
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 # run with python -m pytest tests/test_service.py
 
@@ -138,7 +140,7 @@ class TestHistoryTreeProcessor:
         """
         Test that the convert_dom_element_to_history_element method correctly
         converts a DOMElementNode to a DOMHistoryElement.
-        
+
         This test ensures that:
         1. The method correctly extracts the tag name, xpath, and highlight index.
         2. The parent branch path contains only the current element's tag name.
@@ -179,3 +181,77 @@ class TestHistoryTreeProcessor:
         assert history_element.entire_parent_branch_path == ["a"]  # Changed expectation
         assert history_element.attributes == {"href": "https://example.com"}
         assert history_element.shadow_root is None
+
+class TestDomService:
+    @pytest.fixture
+    def mock_page(self):
+        return Mock(spec=Page)
+
+    def test_create_selector_map(self, mock_page):
+        """
+        Test that the _create_selector_map method correctly creates a mapping
+        between highlight indices and DOMElementNodes.
+
+        This test ensures that:
+        1. The method correctly processes a simple DOM tree.
+        2. The resulting selector map contains the correct mappings.
+        3. Elements without highlight indices are not included in the map.
+        """
+        # Create a simple DOM tree
+        root = DOMElementNode(
+            tag_name="html",
+            xpath="/html",
+            highlight_index=0,
+            is_visible=True,
+            parent=None,
+            attributes={},
+            children=[],
+            shadow_root=None
+        )
+        body = DOMElementNode(
+            tag_name="body",
+            xpath="/html/body",
+            highlight_index=1,
+            is_visible=True,
+            parent=root,
+            attributes={},
+            children=[],
+            shadow_root=None
+        )
+        div = DOMElementNode(
+            tag_name="div",
+            xpath="/html/body/div",
+            highlight_index=None,  # This element should not be in the selector map
+            is_visible=True,
+            parent=body,
+            attributes={},
+            children=[],
+            shadow_root=None
+        )
+        a = DOMElementNode(
+            tag_name="a",
+            xpath="/html/body/div/a",
+            highlight_index=2,
+            is_visible=True,
+            parent=div,
+            attributes={},
+            children=[],
+            shadow_root=None
+        )
+
+        root.children = [body]
+        body.children = [div]
+        div.children = [a]
+
+        # Create DomService instance
+        dom_service = DomService(mock_page)
+
+        # Call _create_selector_map
+        selector_map = dom_service._create_selector_map(root)
+
+        # Assert the correct mappings
+        assert len(selector_map) == 3
+        assert selector_map[0] == root
+        assert selector_map[1] == body
+        assert selector_map[2] == a
+        assert None not in selector_map  # Ensure the div without highlight_index is not in the map
