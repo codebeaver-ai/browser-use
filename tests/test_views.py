@@ -6,10 +6,11 @@ from browser_use.agent.views import AgentHistoryList, AgentOutput
 from browser_use.browser.views import BrowserStateHistory, TabInfo
 from browser_use.controller.registry.views import ActionRegistry, RegisteredAction
 from browser_use.controller.views import ScrollAction
+from browser_use.dom.views import DOMElementNode
 from langchain_core.messages import HumanMessage
 from pathlib import Path
 from pydantic import BaseModel, ValidationError
-from typing import Callable
+from typing import Callable, Optional
 from unittest.mock import Mock
 
 class TestMessageHistory:
@@ -161,3 +162,64 @@ class TestScrollAction:
         # Test with invalid (non-integer) amount
         with pytest.raises(ValidationError):
             ScrollAction(amount="invalid")
+
+class TestDOMElementNode:
+    def test_get_file_upload_element(self):
+        """
+        Test the get_file_upload_element method of DOMElementNode.
+        This test covers:
+        1. Finding a file input element as a direct child
+        2. Finding a file input element nested deeper in the structure
+        3. Returning None when no file input element is present
+        """
+        # Create a mock DOM structure
+        root = DOMElementNode(
+            is_visible=True,
+            parent=None,
+            tag_name='div',
+            xpath='/html/body/div',
+            attributes={},
+            children=[]
+        )
+
+        # Create a file input element
+        file_input = DOMElementNode(
+            is_visible=True,
+            parent=root,
+            tag_name='input',
+            xpath='/html/body/div/input',
+            attributes={'type': 'file'},
+            children=[]
+        )
+
+        # Create a nested structure
+        nested_div = DOMElementNode(
+            is_visible=True,
+            parent=root,
+            tag_name='div',
+            xpath='/html/body/div/div',
+            attributes={},
+            children=[]
+        )
+
+        nested_file_input = DOMElementNode(
+            is_visible=True,
+            parent=nested_div,
+            tag_name='input',
+            xpath='/html/body/div/div/input',
+            attributes={'type': 'file'},
+            children=[]
+        )
+
+        # Test case 1: File input as direct child
+        root.children = [file_input]
+        assert root.get_file_upload_element() == file_input
+
+        # Test case 2: File input nested deeper
+        root.children = [nested_div]
+        nested_div.children = [nested_file_input]
+        assert root.get_file_upload_element() == nested_file_input
+
+        # Test case 3: No file input present
+        root.children = []
+        assert root.get_file_upload_element() is None
