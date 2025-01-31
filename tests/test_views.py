@@ -3,8 +3,10 @@ import tempfile
 
 from browser_use.agent.message_manager.views import MessageHistory, MessageMetadata
 from browser_use.agent.views import AgentHistoryList, AgentOutput
+from browser_use.browser.views import BrowserStateHistory, TabInfo
 from langchain_core.messages import HumanMessage
 from pathlib import Path
+from unittest.mock import Mock
 
 class TestMessageHistory:
     def test_remove_message_updates_total_tokens(self):
@@ -53,3 +55,41 @@ class TestAgentHistoryList:
             assert loaded_history.model_dump() == history_list.model_dump()
 
         # The temporary directory and its contents are automatically cleaned up
+
+class TestBrowserStateHistory:
+    def test_to_dict_method(self):
+        """
+        Test that the to_dict method of BrowserStateHistory correctly converts the object to a dictionary.
+        This test covers the conversion of tabs, screenshot, interacted_element, url, and title.
+        """
+        # Create mock DOMHistoryElement
+        mock_element = Mock()
+        mock_element.to_dict.return_value = {"mock": "element"}
+
+        # Create test data
+        tabs = [TabInfo(page_id=1, url="https://example.com", title="Example")]
+        interacted_element = [mock_element, None]
+
+        # Create BrowserStateHistory instance
+        browser_state_history = BrowserStateHistory(
+            url="https://example.com",
+            title="Example Page",
+            tabs=tabs,
+            interacted_element=interacted_element,
+            screenshot="screenshot.png"
+        )
+
+        # Call to_dict method
+        result = browser_state_history.to_dict()
+
+        # Assert the result
+        assert result == {
+            'tabs': [{'page_id': 1, 'url': 'https://example.com', 'title': 'Example'}],
+            'screenshot': 'screenshot.png',
+            'interacted_element': [{"mock": "element"}, None],
+            'url': 'https://example.com',
+            'title': 'Example Page'
+        }
+
+        # Verify that the to_dict method of the mock element was called
+        mock_element.to_dict.assert_called_once()
