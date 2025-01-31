@@ -1,21 +1,23 @@
 import os
 import pytest
 import sys
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from browser_use.agent.message_manager.service import MessageManager
+from browser_use.agent.prompts import SystemPrompt
 from browser_use.agent.service import Agent
-from browser_use.agent.views import ActionResult, AgentOutput, ActionModel
+from browser_use.agent.views import ActionModel, ActionResult, AgentOutput
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DOMElementNode, DOMTextNode, DomService
+from browser_use.dom.views import Position
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
-from langchain_core.messages import SystemMessage, HumanMessage
-from browser_use.agent.prompts import SystemPrompt
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 # run with python -m pytest tests/test_service.py
 
@@ -91,7 +93,7 @@ class TestAgent:
         """
         Test that set_tool_calling_method correctly determines the tool calling method
         based on the chat model library being used.
-        
+
         This test covers:
         1. ChatGoogleGenerativeAI should return None
         2. ChatOpenAI should return "function_calling"
@@ -100,20 +102,20 @@ class TestAgent:
         """
         # Mock the LLM
         mock_llm = MagicMock()
-        
+
         # Create an Agent instance with the mocked LLM
         agent = Agent(task="Test task", llm=mock_llm)
-        
+
         # Mock the _set_model_names method to set the chat_model_library
         with patch.object(Agent, '_set_model_names') as mock_set_model_names:
             mock_set_model_names.side_effect = lambda: setattr(agent, 'chat_model_library', chat_model_library)
-            
+
             # Call _set_model_names to set the chat_model_library
             agent._set_model_names()
-            
+
             # Now call set_tool_calling_method
             result = agent.set_tool_calling_method("auto")
-            
+
             assert result == expected_method
 
 class TestRegistry:
@@ -189,3 +191,69 @@ class TestController:
         results = await controller.multi_act(mock_actions, mock_browser_context)
 
         #
+
+class TestDomService:
+    def test_create_selector_map(self):
+        """
+        Test that _create_selector_map correctly creates a selector map from a given element tree.
+        This test ensures that:
+        1. The method correctly processes the element tree.
+        2. It creates a selector map with the correct highlight indices.
+        3. It only includes elements with highlight indices in the map.
+        """
+        # Create a mock DomService instance
+        dom_service = DomService(page=None)  # We don't need a real page for this test
+
+        # Create a mock element tree
+        root = DOMElementNode(
+            tag_name="div",
+            xpath="/html/body/div",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=True,
+            highlight_index=1,
+            shadow_root=False,
+            parent=None,
+            position=Position(top=0, left=0, width=100, height=100)
+        )
+
+        child1 = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p[1]",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=False,
+            highlight_index=2,
+            shadow_root=False,
+            parent=root,
+            position=Position(top=10, left=10, width=80, height=20)
+        )
+
+        child2 = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p[2]",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=False,
+            highlight_index=None,  # This element should not be in the selector map
+            shadow_root=False,
+            parent=root,
+            position=Position(top=40, left=10, width=80, height=20)
+        )
+
+        root.children = [child1, child2]
+
+        # Call the method under test
+        selector_map = dom_service._create_selector_map(root)
+
+        # Assert the results
+        assert len(selector_map) == 2  # Only root and child1 should be in the map
+        assert selector_map[1] == root
+        assert selector_map[2] == child1
+        assert 3 not in selector_map  # child2 should not be in the map
