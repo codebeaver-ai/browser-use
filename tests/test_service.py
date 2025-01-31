@@ -1,20 +1,23 @@
 import os
 import pytest
 import sys
-from datetime import datetime
 
 from browser_use.agent.message_manager.service import MessageManager
 from browser_use.agent.prompts import SystemPrompt
 from browser_use.agent.service import Agent
-from browser_use.agent.views import ActionResult, AgentOutput, ActionModel
+from browser_use.agent.views import ActionModel, ActionResult, AgentOutput
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode, DOMTextNode
+from datetime import datetime
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
+from playwright.async_api import Page
 from pydantic import BaseModel
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -178,7 +181,7 @@ class TestController:
     async def test_multi_act_with_new_elements(self):
         """
         Test that multi_act method handles the appearance of new elements correctly.
-        
+
         This test ensures that:
         1. The method executes multiple actions.
         2. It checks for new elements after each action.
@@ -187,3 +190,82 @@ class TestController:
         """
         # Create a real Controller instance
         controller = Controller()
+
+class TestDomService:
+    @pytest.fixture
+    def mock_page(self):
+        return Mock(spec=Page)
+
+    @pytest.fixture
+    def dom_service(self, mock_page):
+        return DomService(mock_page)
+
+    def test_create_selector_map(self, dom_service):
+        """
+        Test that the _create_selector_map method correctly creates a selector map
+        from a given DOM tree.
+
+        This test ensures that:
+        1. The method correctly processes a nested DOM structure.
+        2. It only includes elements with highlight_index in the selector map.
+        3. The resulting selector map has the correct structure and content.
+        """
+        # Create a mock DOM tree
+        root = DOMElementNode(
+            tag_name="div",
+            xpath="/html/body/div",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=True,
+            highlight_index=0,
+            shadow_root=False,
+            parent=None
+        )
+
+        child1 = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p[1]",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=False,
+            highlight_index=1,
+            shadow_root=False,
+            parent=root
+        )
+
+        child2 = DOMElementNode(
+            tag_name="p",
+            xpath="/html/body/div/p[2]",
+            attributes={},
+            children=[],
+            is_visible=True,
+            is_interactive=False,
+            is_top_element=False,
+            highlight_index=None,  # This should not be included in the selector map
+            shadow_root=False,
+            parent=root
+        )
+
+        text_node = DOMTextNode(
+            text="Sample text",
+            is_visible=True,
+            parent=child1
+        )
+
+        root.children = [child1, child2]
+        child1.children = [text_node]
+
+        # Call the method under test
+        selector_map = dom_service._create_selector_map(root)
+
+        # Assert the results
+        assert len(selector_map) == 2
+        assert 0 in selector_map
+        assert 1 in selector_map
+        assert selector_map[0] == root
+        assert selector_map[1] == child1
+        assert 2 not in selector_map  # child2 should not be in the map
