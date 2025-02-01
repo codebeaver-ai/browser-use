@@ -11,6 +11,8 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode, DOMState, DOMTextNode
 from datetime import datetime
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -283,3 +285,88 @@ class TestMessageManager:
         # Verify the merged content of the last two HumanMessages.
         assert isinstance(merged[2], HumanMessage)
         assert merged[2].content == "Another message. And another."
+
+class TestDomService:
+    """
+    Test for DomService's get_clickable_elements method.
+
+    This test simulates the building of a DOM tree by:
+    1. Patching resources.read_text to return dummy JS code.
+    2. Simulating page.evaluate to return a fake DOM tree dictionary.
+    3. Verifying that the resulting DOMState contains a correctly parsed DOMElementNode tree,
+       and that the selector_map gathers all nodes with a non-None highlight index.
+    """
+    @pytest.mark.asyncio
+    async def test_get_clickable_elements(self):
+        # Create a fake DOM tree dictionary to be returned by page.evaluate.
+        fake_dom_dict = {
+            "tagName": "div",
+            "xpath": "/html/body/div",
+            "attributes": {},
+            "isVisible": True,
+            "isInteractive": True,
+            "isTopElement": True,
+            "highlightIndex": 1,
+            "shadowRoot": False,
+            "children": [
+                {
+                    "type": "TEXT_NODE",
+                    "text": "Hello",
+                    "isVisible": True
+                },
+                {
+                    "tagName": "span",
+                    "xpath": "/html/body/div/span",
+                    "attributes": {},
+                    "isVisible": True,
+                    "isInteractive": True,
+                    "isTopElement": False,
+                    "highlightIndex": 2,
+                    "shadowRoot": False,
+                    "children": []
+                }
+            ]
+        }
+
+        # Create a fake page object with evaluate as an AsyncMock returning fake_dom_dict.
+        fake_page = MagicMock()
+        fake_page.evaluate = AsyncMock(return_value=fake_dom_dict)
+
+        # Instantiate DomService with the fake page.
+        dom_service = DomService(page=fake_page)
+
+        # Patch resources.read_text to return a dummy javascript code.
+        with patch("browser_use.dom.service.resources.read_text", return_value="dummy_js_code"):
+            # Call get_clickable_elements.
+            result_state = await dom_service.get_clickable_elements(
+                highlight_elements=True, focus_element=-1, viewport_expansion=0
+            )
+
+        # Assert that the returned state is a DOMState.
+        assert isinstance(result_state, DOMState)
+
+        # Verify that element_tree is a DOMElementNode with tag_name "div" and proper xpath.
+        element_tree = result_state.element_tree
+        assert isinstance(element_tree, DOMElementNode)
+        assert element_tree.tag_name == "div"
+        assert element_tree.xpath == "/html/body/div"
+
+        # Verify that children are parsed correctly.
+        assert len(element_tree.children) == 2
+
+        # First child should be a DOMTextNode with the correct text.
+        first_child = element_tree.children[0]
+        assert isinstance(first_child, DOMTextNode)
+        assert first_child.text == "Hello"
+
+        # Second child should be a DOMElementNode for "span" with highlight index 2.
+        second_child = element_tree.children[1]
+        assert isinstance(second_child, DOMElementNode)
+        assert second_child.tag_name == "span"
+        assert second_child.xpath == "/html/body/div/span"
+        assert second_child.highlight_index == 2
+
+        # Verify that the selector_map captured both nodes with a non-None highlight index.
+        selector_map = result_state.selector_map
+        assert 1 in selector_map  # The div node with highlightIndex 1.
+        assert 2 in selector_map  # The span node with highlightIndex 2.
