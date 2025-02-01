@@ -11,7 +11,9 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from datetime import datetime
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -215,3 +217,69 @@ class TestRegistry:
         # Verify that the action functions were called with correct parameters
         registry.registry.actions['test_action_with_browser'].function.assert_called_once_with(param1='test_value', browser=mock_browser)
         registry.registry.actions['test_action_without_browser'].function.assert_called_once_with(param1='test_value')
+
+class DummySystemPrompt:
+    """
+    Dummy system prompt class to satisfy MessageManager's constructor requirements.
+    """
+    def __init__(self, action_descriptions: str, current_date: datetime, max_actions_per_step: int):
+        self.action_descriptions = action_descriptions
+        self.current_date = current_date
+        self.max_actions_per_step = max_actions_per_step
+
+    def get_system_message(self) -> SystemMessage:
+        return SystemMessage(content="Dummy system prompt")
+
+class TestMessageManager:
+    """
+    Tests for MessageManager functionality not covered by existing tests.
+    This includes merging successive human messages.
+    """
+
+    @pytest.fixture
+    def dummy_message_manager(self):
+        # A dummy LLM object (not used in merge method)
+        dummy_llm = object()
+        # Instantiate MessageManager with minimal required parameters using DummySystemPrompt.
+        mm = MessageManager(
+            llm=dummy_llm,
+            task="Dummy task",
+            action_descriptions="Dummy actions",
+            system_prompt_class=DummySystemPrompt,
+            max_input_tokens=1000,
+            estimated_characters_per_token=3,
+            image_tokens=800,
+            include_attributes=[]
+        )
+        return mm
+
+    def test_merge_successive_human_messages(self, dummy_message_manager):
+        """
+        Test that merge_successive_human_messages correctly merges successive HumanMessage messages
+        while preserving non-human messages.
+        """
+        # Create a list of messages with successive HumanMessage objects and a non-human message in between
+        messages = [
+            HumanMessage(content="Hello, "),
+            HumanMessage(content="world! "),
+            SystemMessage(content="System message."),
+            HumanMessage(content="Another message."),
+            HumanMessage(content=" And another.")
+        ]
+        # Call the merge function
+        merged = dummy_message_manager.merge_successive_human_messages(messages)
+
+        # Expectation:
+        # - The first two HumanMessages get merged into one.
+        # - The SystemMessage remains unchanged.
+        # - The last two HumanMessages merge into one.
+        assert len(merged) == 3, "Expected three messages after merging successive HumanMessages."
+        # Verify the merged content of the first pair.
+        assert isinstance(merged[0], HumanMessage)
+        assert merged[0].content == "Hello, world! "
+        # Verify the SystemMessage remains unchanged.
+        assert isinstance(merged[1], SystemMessage)
+        assert merged[1].content == "System message."
+        # Verify the merged content of the last two HumanMessages.
+        assert isinstance(merged[2], HumanMessage)
+        assert merged[2].content == "Another message. And another."
