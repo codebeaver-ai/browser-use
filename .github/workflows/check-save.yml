@@ -1,0 +1,106 @@
+name: Save Check Results
+description: Save the results of a check run to a spreadsheet and then checks if we tested all of the PRs. If  so, it triggers another workflow to report the results.
+
+on:
+  check_run:
+    types: [completed]
+
+jobs:
+  process-check:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.check_run.app.slug == 'codebeaver-staging' &&
+      contains(fromJSON('["failure", "skipped", "success"]'), github.event.check_run.conclusion)
+
+    steps:
+      - name: Get date
+        id: get_date
+        run: echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+      - id: "update_worksheet"
+        uses: jroehl/gsheet.action@v2.0.0
+        with:
+          spreadsheetId: 11QvkZsqomQ65ns0XBse0xCl8fjUAWbwduYt6xIq4YC8
+          commands: | # list of commands, specified as a valid JSON string
+            [
+              {
+                "command": "appendData",
+                "args": {
+                  "worksheetTitle": "staging-release-${{ steps.get_date.outputs.date }}",
+                  "data": [[
+                    "${{ github.repository }}",
+                    "${{ github.event.check_run.pull_requests[0].number }}",
+                    "${{ github.event.check_run.conclusion }}",
+                    "${{ github.event.check_run.output.summary || '' }}"
+                  ]],
+                   "minCol": 1
+                }
+              }
+            ]
+        env:
+          GSHEET_CLIENT_EMAIL: ${{ secrets.GSHEET_CLIENT_EMAIL }}
+          GSHEET_PRIVATE_KEY: ${{ secrets.GSHEET_PRIVATE_KEY }}
+      - name: Get total tests (B1 cell)
+        id: get_total_tests
+        uses: jroehl/gsheet.action@v2.0.0
+        with:
+          spreadsheetId: 11QvkZsqomQ65ns0XBse0xCl8fjUAWbwduYt6xIq4YC8
+          commands: |
+            [
+              { 
+                "command": "getData",
+                "args": {
+                  "minCol": 2,
+                  "minRow": 1,
+                  "maxCol": 3,
+                  "maxRow": 2,
+                  "worksheetTitle": "staging-release-${{ steps.get_date.outputs.date }}"
+                } 
+              }
+            ]
+        env:
+          GSHEET_CLIENT_EMAIL: ${{ secrets.GSHEET_CLIENT_EMAIL }}
+          GSHEET_PRIVATE_KEY: ${{ secrets.GSHEET_PRIVATE_KEY }}
+
+      - name: Get tests run (D1 cell)
+        id: get_tests_run
+        uses: jroehl/gsheet.action@v2.0.0
+        with:
+          spreadsheetId: 11QvkZsqomQ65ns0XBse0xCl8fjUAWbwduYt6xIq4YC8
+          commands: |
+            [
+              { 
+                "command": "getData",
+                "args": {
+                  "minCol": 4,
+                  "minRow": 1,
+                  "maxCol": 4,
+                  "maxRow": 2,
+                  "worksheetTitle": "staging-release-${{ steps.get_date.outputs.date }}"
+                } 
+              }
+            ]
+        env:
+          GSHEET_CLIENT_EMAIL: ${{ secrets.GSHEET_CLIENT_EMAIL }}
+          GSHEET_PRIVATE_KEY: ${{ secrets.GSHEET_PRIVATE_KEY }}
+
+      - name: dump results
+        id: get-test-run-numbers-as-env
+        env:
+          RESULTS_TOTAL_TESTS: ${{ steps.get_total_tests.outputs.results }}
+          RESULTS_TESTS_RUN: ${{ steps.get_tests_run.outputs.results }}
+        run: |
+          total_tests=$(echo $RESULTS_TOTAL_TESTS | jq -r '.results[0].result.rawData[0][0]')
+          tests_run=$(echo $RESULTS_TESTS_RUN | jq -r '.results[0].result.rawData[0][0]')
+          echo "total_tests=$total_tests" >> $GITHUB_OUTPUT
+          echo "tests_run=$tests_run" >> $GITHUB_OUTPUT
+
+      - name: Trigger another workflow
+        if: ${{ steps.get-test-run-numbers-as-env.outputs.total_tests <= steps.get-test-run-numbers-as-env.outputs.tests_run }}
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.everest-preview+json" \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type": "report-all-test-prs"}'
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
