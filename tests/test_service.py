@@ -11,6 +11,8 @@ from browser_use.browser.views import BrowserState
 from browser_use.controller.registry.service import Registry
 from browser_use.controller.registry.views import ActionModel
 from browser_use.controller.service import Controller
+from browser_use.dom.service import DomService
+from browser_use.dom.views import DOMElementNode, DOMTextNode
 from datetime import datetime
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -283,3 +285,30 @@ class TestMessageManager:
         # Verify the merged content of the last two HumanMessages.
         assert isinstance(merged[2], HumanMessage)
         assert merged[2].content == "Another message. And another."
+
+class TestDomService:
+    """
+    Tests for DomService functionality not covered by existing tests.
+    This test verifies that a ValueError is raised by get_clickable_elements
+    when _build_dom_tree returns a DOMTextNode instead of a DOMElementNode.
+    """
+
+    @pytest.mark.asyncio
+    async def test_build_dom_tree_failure_with_text_node(self):
+        """
+        Test that DomService.get_clickable_elements raises a ValueError when the parsed node is not a DOMElementNode.
+        This is simulated by having page.evaluate return a dictionary representing a TEXT_NODE.
+        """
+        # Create a dummy page with an async evaluate method that returns a TEXT_NODE dict.
+        mock_page = MagicMock()
+        mock_page.evaluate = AsyncMock(return_value={
+            'type': 'TEXT_NODE',
+            'text': 'Sample text',
+            'isVisible': True
+        })
+
+        dom_service = DomService(page=mock_page)
+
+        # Expect a ValueError because _parse_node returns a DOMTextNode, not a DOMElementNode.
+        with pytest.raises(ValueError, match='Failed to parse HTML to dictionary'):
+            await dom_service.get_clickable_elements()
