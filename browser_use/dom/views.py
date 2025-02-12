@@ -115,7 +115,7 @@ class DOMElementNode(DOMBaseNode):
 							f'{key}="{value}"' for key, value in node.attributes.items() if key in include_attributes
 						)
 					formatted_text.append(
-						f'{node.highlight_index}[:]<{node.tag_name}{attributes_str}>{node.get_all_text_till_next_clickable_element()}</{node.tag_name}>'
+						f'[{node.highlight_index}]<{node.tag_name}{attributes_str}>{node.get_all_text_till_next_clickable_element()}</{node.tag_name}>'
 					)
 
 				# Process children regardless
@@ -125,7 +125,7 @@ class DOMElementNode(DOMBaseNode):
 			elif isinstance(node, DOMTextNode):
 				# Add text only if it doesn't have a highlighted parent
 				if not node.has_parent_with_highlight_index():
-					formatted_text.append(f'_[:]{node.text}')
+					formatted_text.append(f'[]{node.text}')
 
 		process_node(self, 0)
 		return '\n'.join(formatted_text)
@@ -156,29 +156,6 @@ class DOMElementNode(DOMBaseNode):
 		from browser_use.browser.context import BrowserContext
 
 		return BrowserContext._enhanced_css_selector_for_element(self)
-
-
-class ElementTreeSerializer:
-	@staticmethod
-	def serialize_clickable_elements(element_tree: DOMElementNode) -> str:
-		return element_tree.clickable_elements_to_string()
-
-	@staticmethod
-	def dom_element_node_to_json(element_tree: DOMElementNode) -> dict:
-		def node_to_dict(node: DOMBaseNode) -> dict:
-			if isinstance(node, DOMTextNode):
-				return {'type': 'text', 'text': node.text}
-			elif isinstance(node, DOMElementNode):
-				return {
-					'type': 'element',
-					'tag_name': node.tag_name,
-					'attributes': node.attributes,
-					'highlight_index': node.highlight_index,
-					'children': [node_to_dict(child) for child in node.children],
-				}
-			return {}
-
-		return node_to_dict(element_tree)
 
 
 SelectorMap = dict[int, DOMElementNode]

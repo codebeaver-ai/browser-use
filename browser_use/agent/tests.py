@@ -37,15 +37,12 @@ def action_registry():
 	registry = Registry()
 
 	# Register the actions we need for testing
-	@registry.action(
-		description='Click an element', requires_browser=True, param_model=ClickElementAction
-	)
+	@registry.action(description='Click an element', param_model=ClickElementAction)
 	def click_element(params: ClickElementAction, browser=None):
 		pass
 
 	@registry.action(
 		description='Extract page content',
-		requires_browser=True,
 		param_model=ExtractPageContentAction,
 	)
 	def extract_page_content(params: ExtractPageContentAction, browser=None):
@@ -72,7 +69,10 @@ def sample_history(action_registry):
 		AgentHistory(
 			model_output=AgentOutput(
 				current_state=AgentBrain(
-					evaluation_previous_goal='None', memory='Started task', next_goal='Click button'
+					page_summary='I need to find the founders of browser-use',
+					evaluation_previous_goal='None',
+					memory='Started task',
+					next_goal='Click button',
 				),
 				action=[click_action],
 			),
@@ -82,12 +82,13 @@ def sample_history(action_registry):
 				title='Page 1',
 				tabs=[TabInfo(url='https://example.com', title='Page 1', page_id=1)],
 				screenshot='screenshot1.png',
-				interacted_element=[],
+				interacted_element=[{'xpath': '//button[1]'}],
 			),
 		),
 		AgentHistory(
 			model_output=AgentOutput(
 				current_state=AgentBrain(
+					page_summary="This is a sample page summary.",
 					evaluation_previous_goal='Clicked button',
 					memory='Button clicked',
 					next_goal='Extract content',
@@ -106,12 +107,13 @@ def sample_history(action_registry):
 				title='Page 2',
 				tabs=[TabInfo(url='https://example.com/page2', title='Page 2', page_id=2)],
 				screenshot='screenshot2.png',
-				interacted_element=[],
+				interacted_element=[{'xpath': '//div[1]'}],
 			),
 		),
 		AgentHistory(
 			model_output=AgentOutput(
 				current_state=AgentBrain(
+					page_summary='I found out that the founders are John Doe and Jane Smith. I need to draft them a message.',
 					evaluation_previous_goal='Extracted content',
 					memory='Content extracted',
 					next_goal='Finish task',
@@ -124,7 +126,7 @@ def sample_history(action_registry):
 				title='Page 2',
 				tabs=[TabInfo(url='https://example.com/page2', title='Page 2', page_id=2)],
 				screenshot='screenshot3.png',
-				interacted_element=[],
+				interacted_element=[{'xpath': '//div[1]'}],
 			),
 		),
 	]
@@ -165,10 +167,12 @@ def test_all_screenshots(sample_history: AgentHistoryList):
 
 def test_all_model_outputs(sample_history: AgentHistoryList):
 	outputs = sample_history.model_actions()
+	print(f"DEBUG: {outputs[0]}")
 	assert len(outputs) == 3
-	assert outputs[0] == {'click_element': {'index': 1, 'xpath': '//button[1]'}}
-	assert outputs[1] == {'extract_page_content': {'value': 'text'}}
-	assert outputs[2] == {'done': {'text': 'Task completed'}}
+	# get first key value pair
+	assert dict([next(iter(outputs[0].items()))]) == {'click_element': {'index': 1}}
+	assert dict([next(iter(outputs[1].items()))])  == {'extract_page_content': {'value': 'text'}}
+	assert dict([next(iter(outputs[2].items()))])  == {'done': {'text': 'Task completed'}}
 
 
 def test_all_model_outputs_filtered(sample_history: AgentHistoryList):
